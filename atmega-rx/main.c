@@ -1,5 +1,6 @@
 #define F_CPU 8000000UL
-#include "u8g.h"
+
+#include "u8glib/src/u8g.h"
 #include <avr/io.h>
 #include <inttypes.h>
 #include <avr/interrupt.h>
@@ -8,7 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "nRF24L01P.h"
-
 
 #define LED       PB1
 #define SPI_MOSI  PB3
@@ -45,43 +45,20 @@ void sys_init(void)
 #endif
 }
 
+uint8_t nrfStatus = 0;
+char rx_payload[6] = "a";
+
 void draw()
 {
     u8g_SetFont(&u8g, u8g_font_10x20);
 
-    uint8_t nrfStatus;
-    uint8_t rx_payload;
-    _NRF_CS_L;
-    nrfStatus = spi_transfer(NRF_NOP);
-    _NRF_CS_H;
-
-
     char buffer[16];
-    /* char buffer[8 + 1]; */
+    char buffer2[16];
     sprintf(buffer, "REG = 0x%0.2x", nrfStatus);
-    /* buffer[8] = "\0"; */
+    //sprintf(buffer2, "PL = %c", rx_payload);
     u8g_DrawStr(&u8g, 5, 20, buffer);
+    u8g_DrawStr(&u8g, 5, 40, rx_payload);
 
-    if (nrfStatus == 0x40) {
-	_NRF_CS_L;
-	//spi_transfer(NRF_R_REGISTER | NRF_RF_SETUP);
-	rx_payload = spi_transfer(NRF_R_RX_PAYLOAD);
-	_NRF_CS_H;
-
-	char buffer2[16];
-	sprintf(buffer2, "PL = %c", rx_payload);
-	u8g_DrawStr(&u8g, 5, 40, buffer2);
-
-	_delay_ms(1000);
-	/* Clear receive bit */
-	_NRF_CS_L;
-	spi_transfer(NRF_W_REGISTER | NRF_STATUS);
-	spi_transfer(0x00);
-	_NRF_CS_H;
-
-
-
-    }
 }
 
 
@@ -147,7 +124,7 @@ void setup(void) {
     /* _NRF_CS_H; */
 
 
-    // SPI : write NRF Rx Addr P0 for auto ACK
+    /* // SPI : write NRF Rx Addr P0 for auto ACK */
     _NRF_CS_L;
     spi_transfer(NRF_W_REGISTER | NRF_RX_ADDR_P0);
     spi_transfer(0xB3);
@@ -162,7 +139,6 @@ void setup(void) {
 void loop(void) {
     // SPI
     uint16_t i;
-    //DDRB ^= 1<<LED;
 
     // SPI : write NRF default config : POWER_UP and EN_CRC / PWR_RX disable
     _NRF_CS_L;
@@ -177,16 +153,39 @@ void loop(void) {
     _NRF_CS_H;
 
     /* Enter RX Mode */
-    // NRF CE pulse (minimum 10us)
     _NRF_CE_H;
+    _delay_us(200);		/* Time the chip takes to start listening */
 
-    DDRB ^= 1<<LED;
+    _NRF_CS_L;
+    nrfStatus = spi_transfer(NRF_NOP);
+    _NRF_CS_H;
+
+    if (nrfStatus == 0x40) {
+	/* Quit RX mode */
+	_NRF_CE_L;
+
+	/* read payload */
+    	_NRF_CS_L;
+    	spi_transfer(NRF_R_RX_PAYLOAD);
+	rx_payload[0] = spi_transfer(NRF_NOP);
+    	_NRF_CS_H;
+
+    	/* Clear receive bit */
+    	_NRF_CS_L;
+    	spi_transfer(NRF_W_REGISTER | NRF_STATUS);
+    	spi_transfer(0x40);
+    	_NRF_CS_H;
+
+    }
+
     u8g_FirstPage(&u8g);
     do
     {
 	draw();
     } while ( u8g_NextPage(&u8g) );
-    u8g_Delay(100);
+    u8g_Delay(10);
+
+    DDRB ^= 1<<LED;
 }
 
 int main(void) {
