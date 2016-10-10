@@ -3,7 +3,6 @@ TARGETNAME = main
 MCU:=atmega328p
 F_CPU:=8000000
 WORKDIR:=.
-U8GM2DIR:=./u8glib/src
 
 # Type: "avrdude -c ?" to get a full listing.
 AVRDUDE_PROGRAMMER := usbtiny
@@ -16,7 +15,6 @@ AR  = @avr-ar
 
 # Compile all .c files in all directories
 SRC = $(shell ls $(WORKDIR)/*.c 2>/dev/null)
-SRC += $(shell ls $(U8GM2DIR)/*.c 2>/dev/null)
 
 # Flags for the linker and the compiler
 COMMON_FLAGS = -DF_CPU=$(F_CPU) -mmcu=$(MCU) $(DOGDEFS)

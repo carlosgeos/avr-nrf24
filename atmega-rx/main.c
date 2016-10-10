@@ -1,6 +1,5 @@
 #define F_CPU 8000000UL
 
-#include "u8glib/src/u8g.h"
 #include <avr/io.h>
 #include <inttypes.h>
 #include <avr/interrupt.h>
@@ -11,6 +10,7 @@
 #include "nRF24L01P.h"
 
 #define LED       PB1
+#define RELAY     PD7
 #define SPI_MOSI  PB3
 #define SPI_MISO  PB4
 #define SPI_CLK   PB5
@@ -29,36 +29,33 @@ void loop(void);
 int main(void);
 uint8_t spi_transfer(uint8_t data);
 
-u8g_t u8g;
-
-void u8g_setup(void)
-{
-  u8g_InitI2C(&u8g, &u8g_dev_ssd1306_128x64_i2c, U8G_I2C_OPT_NONE);
-}
-
-void sys_init(void)
-{
-#if defined(__AVR__)
-  /* select minimal prescaler (max system speed) */
-  CLKPR = 0x80;
-  CLKPR = 0x00;
-#endif
-}
-
 uint8_t nrfStatus = 0;
-char rx_payload[6] = "a";
+char rx_payload[10];
 
-void draw()
-{
-    u8g_SetFont(&u8g, u8g_font_10x20);
+void activate_relay() {
+    sbi(PORTD, RELAY);
+    _delay_ms(100);
+    cbi(PORTD, RELAY);
+}
 
-    char buffer[16];
-    char buffer2[16];
-    sprintf(buffer, "REG = 0x%0.2x", nrfStatus);
-    //sprintf(buffer2, "PL = %c", rx_payload);
-    u8g_DrawStr(&u8g, 5, 20, buffer);
-    u8g_DrawStr(&u8g, 5, 40, rx_payload);
+ISR(INT0_vect) {
+    /* Quit RX mode */
+    _NRF_CE_L;
 
+    /* read payload */
+    _NRF_CS_L;
+    spi_transfer(NRF_R_RX_PAYLOAD);
+    rx_payload[0] = spi_transfer(NRF_NOP);
+    rx_payload[1] = spi_transfer(NRF_NOP);
+    _NRF_CS_H;
+
+    /* Clear receive bit */
+    _NRF_CS_L;
+    spi_transfer(NRF_W_REGISTER | NRF_STATUS);
+    spi_transfer(0x40);
+    _NRF_CS_H;
+
+    activate_relay();
 }
 
 
@@ -71,9 +68,16 @@ uint8_t spi_transfer(uint8_t data) {
 uint8_t addr[5];
 
 void setup(void) {
-    sys_init();
-    u8g_setup();
+    /* Interrupts setup (falling edge on INT0, since the IRQ pin is
+     * active low) */
+    EICRA = 0x02; 		/* External Interrupt Control Register */
+    EIMSK = 0x01;		/* External Interrupt Mask Register */
 
+    //sys_init();
+
+
+    sbi(DDRD, RELAY);
+    sbi(PORTD, RELAY);
     // LED IO
     sbi(DDRB,  LED); // set LED pin as output
     sbi(PORTB, LED); // turn the LED on
@@ -90,6 +94,8 @@ void setup(void) {
 
     // set as master
     sbi(SPCR, MSTR);
+    // set clock as f_osc / 16 = 500kHz if 8MHz clock
+    sbi(SPCR, SPR0);
     // enable SPI
     sbi(SPCR, SPE);
     /* Module setup */
@@ -107,22 +113,6 @@ void setup(void) {
 
     // Address width -> 5 bytes by default. In this case: 0xB3B3B3B3B3
 
-    /* _NRF_CS_L; */
-    /* spi_transfer(NRF_W_REGISTER | NRF_SETUP_RETR); */
-    /* spi_transfer(0x03);		/\* Number of retransmissions *\/ */
-    /* _NRF_CS_H; */
-
-
-    // SPI : write NRF Tx Addr
-    /* _NRF_CS_L; */
-    /* spi_transfer(NRF_W_REGISTER | NRF_TX_ADDR); */
-    /* spi_transfer(0xB3); */
-    /* spi_transfer(0xB3); */
-    /* spi_transfer(0xB3); */
-    /* spi_transfer(0xB3); */
-    /* spi_transfer(0xB3); */
-    /* _NRF_CS_H; */
-
 
     /* // SPI : write NRF Rx Addr P0 for auto ACK */
     _NRF_CS_L;
@@ -134,19 +124,17 @@ void setup(void) {
     spi_transfer(0xB3);
     _NRF_CS_H;
 
+
+    sei();
 }
 
-void loop(void) {
-    // SPI
-    uint16_t i;
-
+void loop() {
     // SPI : write NRF default config : POWER_UP and EN_CRC / PWR_RX disable
     _NRF_CS_L;
     spi_transfer(NRF_W_REGISTER | NRF_CONFIG);
     spi_transfer(NRF_RX_CONF);
     _NRF_CS_H;
 
-    // SPI : write NRF default config : POWER_UP and EN_CRC / PWR_RX disable
     _NRF_CS_L;
     spi_transfer(NRF_W_REGISTER | NRF_RX_PW_P0);
     spi_transfer(0x01);
@@ -156,41 +144,13 @@ void loop(void) {
     _NRF_CE_H;
     _delay_us(200);		/* Time the chip takes to start listening */
 
-    _NRF_CS_L;
-    nrfStatus = spi_transfer(NRF_NOP);
-    _NRF_CS_H;
+    _delay_ms(100);
 
-    if (nrfStatus == 0x40) {
-	/* Quit RX mode */
-	_NRF_CE_L;
-
-	/* read payload */
-    	_NRF_CS_L;
-    	spi_transfer(NRF_R_RX_PAYLOAD);
-	rx_payload[0] = spi_transfer(NRF_NOP);
-    	_NRF_CS_H;
-
-    	/* Clear receive bit */
-    	_NRF_CS_L;
-    	spi_transfer(NRF_W_REGISTER | NRF_STATUS);
-    	spi_transfer(0x40);
-    	_NRF_CS_H;
-
-    }
-
-    u8g_FirstPage(&u8g);
-    do
-    {
-	draw();
-    } while ( u8g_NextPage(&u8g) );
-    u8g_Delay(10);
-
-    DDRB ^= 1<<LED;
 }
 
 int main(void) {
     setup();
-    for(;;) {
+    for (; ; ) {
 	loop();
     }
 };
