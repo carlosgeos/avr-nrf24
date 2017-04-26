@@ -12,7 +12,7 @@ BIN_FORMAT=ihex
 
 PORT=usb
 //PROTOCOL=avrispmkII
-PROTOCOL=usbasp
+PROTOCOL=usbtiny
 PART=$(MCU)
 AVRDUDE=avrdude -F -V
 AVRSIZE=avr-size
@@ -43,7 +43,7 @@ size:   $(PROJECT).elf
 disasm:	$(PROJECT).elf
 	$(OBJDUMP) -S $< > $(PROJECT).disasm
 
-rfuses: 
+rfuses:
 	$(AVRDUDE) -c $(PROTOCOL) -P $(PORT) -p $(PART) -U lfuse:r:-:h -U hfuse:r:-:h -U efuse:r:-:h
 
 wfuses:

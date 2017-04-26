@@ -1,4 +1,5 @@
 #define F_CPU 8000000UL
+
 #include <avr/io.h>
 #include <inttypes.h>
 #include <avr/interrupt.h>
@@ -54,6 +55,7 @@ uint8_t spi_transfer(uint8_t data) {
 }
 
 uint8_t addr[5];
+const char password[6] = "carlos";
 
 void setup(void) {
 
@@ -73,7 +75,7 @@ void setup(void) {
     /* Module setup */
     _NRF_CS_L;
     spi_transfer(NRF_W_REGISTER | NRF_RF_SETUP);
-    spi_transfer(0x06);		/* 1Mbps, 0db */
+    spi_transfer(NRF_DR_1MBPS | NRF_TX_PWR_0DB); /* 1Mbps, 0db */
     _NRF_CS_H;
 
     _NRF_CS_L;
@@ -82,7 +84,6 @@ void setup(void) {
     _NRF_CS_H;
 
     // Address width -> 5 bytes by default. In this case: 0xB3B3B3B3B3
-
     _NRF_CS_L;
     spi_transfer(NRF_W_REGISTER | NRF_SETUP_RETR);
     spi_transfer(0x03);		/* Number of retransmissions */
@@ -137,7 +138,7 @@ void loop(void) {
     // SPI : read NRF Tx Addr and display it
     _NRF_CS_L;
     spi_transfer(NRF_R_REGISTER | NRF_TX_ADDR);
-    for (i=0; i < 5; i++)
+    for (i = 0; i < 5; i++)
       addr[i] = spi_transfer(NRF_NOP);
     _NRF_CS_H;
 
@@ -150,13 +151,11 @@ void loop(void) {
 
 
     // SPI : write NRF Tx payload
+    size_t j;
     _NRF_CS_L;
     spi_transfer(NRF_W_REGISTER | NRF_W_TX_PAYLOAD);
-    /* char msg[] = ""; */
-    /* size_t msg_size = sizeof(msg)/sizeof(msg[0]); */
-    /* int j; */
-    /* for (j = 0; j < msg_size; ++j) */
-    spi_transfer('C');
+    for (j = 0; j < 6; ++j)
+	spi_transfer(password[j]);
     _NRF_CS_H;
 
     /* Transmitting data */
@@ -175,7 +174,7 @@ void loop(void) {
     /* } while ((nrfStatus & 0x30) == 0); */
     _NRF_CE_L;
 
-    _delay_ms(1000);
+    _delay_ms(1300);
 
     DDRB ^= 1<<LED;
 }
